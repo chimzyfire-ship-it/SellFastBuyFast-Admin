@@ -334,16 +334,7 @@ function detail(data) {
   let body = "";
   if (r.tab === "details")
     body = r.section === "catalogue"
-      ? `<div class="stack">${panel(
-          "Review decision",
-          `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">Check the listing below, then publish it or send one clear correction request directly to ${esc(record.merchantName || "the merchant")}.</p><div class="action-stack catalogue-review-actions">${actions.map(([key, action]) => button(action.label, "command", key === "publish_product", `data-key="${key}"`)).join("")}</div>`,
-        )}${panel("Listing details", recordFacts(r.section, record))}${panel("Product photos", media(data.media))}${panel(
-          "Options and available stock",
-          simpleTable(
-            ["Option", "Item code", "Price", "Available", "Reserved"],
-            (data.variants || []).map((v) => [v.name, v.sku, money(v.priceMinor), v.available, v.reserved]),
-          ),
-        )}${panel("Submitted documents", (data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : '<p class="small muted">No extra documents were supplied with this listing.</p>')}${panel("Listing activity", timeline(data.activity))}</div>`
+      ? catalogueReview(data, actions)
       : panel("Record details", recordFacts(r.section, record));
   if (r.tab === "activity")
     body = panel("Activity history", timeline(data.activity));
@@ -424,7 +415,7 @@ function detail(data) {
   )
     extra.push(button("Edit roles", "edit-roles"));
   const nextSteps = r.section === "catalogue" ? "" : panel("Next steps", `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">${actions.length ? "Review the evidence before making a decision." : "No decisions are available for this record in its current state or for your role."}</p><div class="action-stack">${actions.map(([key, a]) => button(a.label, "command", false, `data-key="${key}"`)).join("")}${extra.join("")}</div>`);
-  return `<div class="row between record-back">${link(`Back to ${s.title.toLowerCase()}`, r.section, "", { q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }, "back-link")}${refreshTools()}</div><div class="detail-header"><span class="record-icon">${icon(s.icon)}</span><div><div class="eyebrow">${esc(record.reference || record.id)}</div><h1>${esc(title(record))}</h1></div>${badge(recordStatus(r.section, record))}</div><nav class="tabs" aria-label="Record views">${tabs.map(([key, label]) => `<a href="${esc(routeUrl(r.section, r.id, { tab: key, q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }))}" ${key === r.tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav><div class="detail-grid"><div>${body}</div><aside class="stack">${nextSteps}${panel("Connected records", relatedLinks(record))}${panel(
+  return `<div class="row between record-back">${link(`Back to ${s.title.toLowerCase()}`, r.section, "", { q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }, "back-link")}${refreshTools()}</div><div class="detail-header"><span class="record-icon">${icon(s.icon)}</span><div><div class="eyebrow">${esc(record.reference || record.id)}</div><h1>${esc(title(record))}</h1></div>${badge(recordStatus(r.section, record))}</div><nav class="tabs" aria-label="Record views">${tabs.map(([key, label]) => `<a href="${esc(routeUrl(r.section, r.id, { tab: key, q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }))}" ${key === r.tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav><div class="detail-grid ${r.section === "catalogue" ? "catalogue-detail-grid" : ""}"><div>${body}</div><aside class="stack">${nextSteps}${panel("Connected records", relatedLinks(record))}${panel(
     "Record context",
     facts([
       ["Record ID", record.id],
@@ -433,6 +424,178 @@ function detail(data) {
       ["Assigned to", record.assignedToName || "Unassigned"],
     ]),
   )}</aside></div>`;
+}
+function catalogueReview(data, actions) {
+  const record = data.record;
+  const mediaItems = (data.media || []).filter((m) => safeHttps(m.url));
+  const primaryMedia = mediaItems[0];
+  const primaryUrl = primaryMedia ? safeHttps(primaryMedia.url) : "";
+  const primaryLabel = primaryMedia ? (primaryMedia.alt || primaryMedia.label || record.title || "Product photo") : "";
+
+  const rawDesc = String(record.description || "");
+  let cleanDesc = rawDesc;
+  let highlights = [];
+  let parsedSpecs = [];
+
+  const highlightsMatch = rawDesc.match(/Key Highlights:\s*([\s\S]*?)(?=Product Specifications:|Care instructions:|$)/i);
+  if (highlightsMatch) {
+    highlights = highlightsMatch[1].split(/\n/).map((l) => l.replace(/^•\s*/, "").trim()).filter(Boolean);
+    cleanDesc = cleanDesc.replace(highlightsMatch[0], "");
+  }
+
+  const specsMatch = rawDesc.match(/Product Specifications:\s*([\s\S]*?)(?=Care instructions:|Key Highlights:|$)/i);
+  if (specsMatch) {
+    parsedSpecs = specsMatch[1].split(/\n/).map((l) => l.replace(/^•\s*/, "").trim()).filter(Boolean);
+    cleanDesc = cleanDesc.replace(specsMatch[0], "");
+  }
+
+  cleanDesc = cleanDesc.trim();
+
+  return `
+    <div class="catalogue-review-component">
+      <!-- HERO ROW: PRODUCT PHOTO FIRST + PRIMARY SPECIFICATIONS & DECISION -->
+      <div class="catalogue-hero-card">
+        <div class="catalogue-photo-column">
+          <div class="catalogue-main-photo-wrap">
+            ${primaryUrl ? `
+              <button type="button" class="catalogue-photo-expand-btn" data-action="image" data-url="${esc(primaryUrl)}" data-label="${esc(primaryLabel)}" title="Click to expand high-resolution photo">
+                <img id="catalogue-active-hero-img" src="${esc(primaryUrl)}" alt="${esc(primaryLabel)}" class="catalogue-hero-img" />
+                <div class="catalogue-photo-overlay">
+                  <span>${icon("search")} Click to expand high-res</span>
+                </div>
+              </button>
+            ` : `
+              <div class="catalogue-photo-placeholder">
+                <span class="catalogue-placeholder-icon">${icon("package")}</span>
+                <span>No product photo supplied</span>
+              </div>
+            `}
+          </div>
+          ${mediaItems.length > 1 ? `
+            <div class="catalogue-thumbs-strip">
+              ${mediaItems.map((m, idx) => `
+                <button type="button" class="catalogue-thumb-btn ${idx === 0 ? "active" : ""}" data-action="switch-catalogue-photo" data-url="${esc(safeHttps(m.url))}" data-label="${esc(m.alt || m.label || `Photo ${idx + 1}`)}" title="Preview photo ${idx + 1}">
+                  <img src="${esc(safeHttps(m.url))}" alt="${esc(m.alt || m.label || `Photo ${idx + 1}`)}" />
+                </button>
+              `).join("")}
+            </div>
+          ` : ""}
+          ${primaryUrl ? `
+            <button type="button" class="btn ghost btn-sm catalogue-zoom-btn" data-action="image" data-url="${esc(primaryUrl)}" data-label="${esc(primaryLabel)}">
+              ${icon("search")} Expand photo fullscreen
+            </button>
+          ` : ""}
+        </div>
+
+        <div class="catalogue-overview-column">
+          <div class="catalogue-meta-row">
+            <span class="catalogue-category-pill">${icon("tag")} ${esc(record.categoryName || "General")}</span>
+            ${badge(recordStatus("catalogue", record))}
+          </div>
+
+          <h2 class="catalogue-hero-title">${esc(title(record))}</h2>
+
+          <div class="catalogue-merchant-row">
+            <span class="muted">Merchant:</span>
+            ${record.merchantId ? `
+              <a class="catalogue-merchant-link" href="${esc(routeUrl("merchants", record.merchantId))}">
+                <strong>${esc(record.merchantName || record.merchantId)}</strong>
+                ${icon("arrow")}
+              </a>
+            ` : `<strong>${esc(record.merchantName || "Unknown")}</strong>`}
+            ${record.brand ? `<span class="catalogue-brand-badge">${esc(record.brand)}</span>` : ""}
+            <span class="catalogue-condition-badge">${esc(human(record.condition || "brand_new"))}</span>
+          </div>
+
+          <!-- Price & Stock Key Highlights Bar -->
+          <div class="catalogue-price-stock-bar">
+            <div class="catalogue-stat-block">
+              <span class="catalogue-stat-label">Selling Price</span>
+              <strong class="catalogue-stat-value price">${money(record.priceMinor)}</strong>
+            </div>
+            <div class="catalogue-stat-block">
+              <span class="catalogue-stat-label">Available Stock</span>
+              <strong class="catalogue-stat-value ${(record.stock ?? 0) > 0 ? "stock-ok" : "stock-out"}">
+                ${record.stock ?? 0} units
+              </strong>
+            </div>
+            <div class="catalogue-stat-block">
+              <span class="catalogue-stat-label">Item Code / SKU</span>
+              <span class="catalogue-stat-code">${esc(record.sku || "—")}</span>
+            </div>
+          </div>
+
+          <!-- Quick Specifications Grid -->
+          <div class="catalogue-quick-specs">
+            <div class="catalogue-spec-item"><span class="muted">Weight:</span> <strong>${record.weightKg ? `${record.weightKg} kg` : "—"}</strong></div>
+            <div class="catalogue-spec-item"><span class="muted">Dimensions:</span> <strong>${esc(record.dimensionsCm || "—")}</strong></div>
+            <div class="catalogue-spec-item"><span class="muted">Return Policy:</span> <strong>${esc(human(record.returnPolicy || "7_day_escrow"))}</strong></div>
+            <div class="catalogue-spec-item"><span class="muted">Warranty:</span> <strong>${esc(human(record.warranty || "1_year"))}</strong></div>
+            <div class="catalogue-spec-item"><span class="muted">Submitted:</span> <strong>${date(record.submittedAt || record.createdAt)}</strong></div>
+            ${record.rejectionReason ? `
+              <div class="catalogue-spec-item full rejection"><span class="danger">Correction reason:</span> <strong class="danger">${esc(record.rejectionReason)}</strong></div>
+            ` : ""}
+          </div>
+
+          <!-- Integrated Review Decision Box -->
+          <div class="catalogue-decision-card">
+            ${record.actionBlockReason ? notice(record.actionBlockReason) : ""}
+            <div class="catalogue-decision-header">
+              <strong>${icon("shield-check")} Moderation Decision</strong>
+              <span class="small muted">Publish to live storefront or send one clear correction request to ${esc(record.merchantName || "the merchant")}.</span>
+            </div>
+            <div class="action-stack catalogue-review-actions">
+              ${actions.map(([key, action]) => button(action.label, "command", key === "publish_product", `data-key="${key}"`)).join("")}
+              ${actions.length === 0 ? `<p class="small muted">No moderation decisions are available for this listing in its current state.</p>` : ""}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAILED SECTIONS IN SAME COMPONENT -->
+      <div class="catalogue-details-sections">
+        <!-- Section: Description & Highlights -->
+        <div class="catalogue-section-card">
+          <h3>Description & Highlights</h3>
+          ${cleanDesc ? `<div class="catalogue-desc-body"><p>${esc(cleanDesc)}</p></div>` : ""}
+          ${highlights.length ? `
+            <div class="catalogue-highlights-box">
+              <h4>Key Highlights</h4>
+              <ul>
+                ${highlights.map((h) => `<li>${esc(h)}</li>`).join("")}
+              </ul>
+            </div>
+          ` : ""}
+          ${parsedSpecs.length ? `
+            <div class="catalogue-specs-chips">
+              ${parsedSpecs.map((s) => `<span class="spec-chip">${esc(s)}</span>`).join("")}
+            </div>
+          ` : ""}
+        </div>
+
+        <!-- Section: Variants & Stock -->
+        <div class="catalogue-section-card">
+          <h3>Options and available stock</h3>
+          ${simpleTable(
+            ["Option", "Item code", "Price", "Available", "Reserved"],
+            (data.variants || []).map((v) => [v.name, v.sku, money(v.priceMinor), v.available, v.reserved]),
+          )}
+        </div>
+
+        <!-- Section: Submitted documents -->
+        <div class="catalogue-section-card">
+          <h3>Submitted documents</h3>
+          ${(data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : '<p class="small muted">No extra documents were supplied with this listing.</p>'}
+        </div>
+
+        <!-- Section: Activity History -->
+        <div class="catalogue-section-card">
+          <h3>Listing activity</h3>
+          ${timeline(data.activity)}
+        </div>
+      </div>
+    </div>
+  `;
 }
 function simpleTable(headings, rows) {
   return rows.length
@@ -825,6 +988,26 @@ document.addEventListener("click", async (event) => {
           target.dataset.label,
           `<img class="image-preview" src="${esc(url)}" alt="${esc(target.dataset.label)}">`,
         );
+    } else if (action === "switch-catalogue-photo") {
+      const heroImg = document.querySelector("#catalogue-active-hero-img");
+      const expandBtn = document.querySelector(".catalogue-photo-expand-btn");
+      const zoomBtn = document.querySelector(".catalogue-zoom-btn");
+      const newUrl = safeHttps(target.dataset.url);
+      const newLabel = target.dataset.label || "Product photo";
+      if (heroImg && newUrl) {
+        heroImg.src = newUrl;
+        heroImg.alt = newLabel;
+        if (expandBtn) {
+          expandBtn.dataset.url = newUrl;
+          expandBtn.dataset.label = newLabel;
+        }
+        if (zoomBtn) {
+          zoomBtn.dataset.url = newUrl;
+          zoomBtn.dataset.label = newLabel;
+        }
+        document.querySelectorAll(".catalogue-thumb-btn").forEach((b) => b.classList.remove("active"));
+        target.closest(".catalogue-thumb-btn")?.classList.add("active");
+      }
     } else if (action === "connections") await checkConnections();
     else if (action === "sign-out" && !state.viewer) await endSession();
     else if (action === "sign-out" || action === "sign-out-all")
