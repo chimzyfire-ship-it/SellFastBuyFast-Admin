@@ -48,6 +48,7 @@ const state = {
   generation: 0,
   notice: "",
   busy: false,
+  identityRun: 0,
   drafts: new Map(),
   preferences: { density: "comfortable" },
 };
@@ -309,8 +310,10 @@ function detail(data) {
     tabs.push(["notes", "Internal notes"]);
   if (r.section === "support")
     tabs.splice(1, 0, ["conversation", "Conversation"]);
-  if (r.section === "catalogue")
-    tabs.splice(1, 0, ["variants", "Variants & stock"]);
+  if (r.section === "catalogue") {
+    tabs.length = 0;
+    tabs.push(["details", "Review listing"]);
+  }
   if (r.section === "orders")
     tabs.splice(1, 0, ["fulfilment", "Items & delivery"]);
   if (["refunds", "payouts", "reconciliation"].includes(r.section))
@@ -330,7 +333,18 @@ function detail(data) {
   const draft = state.drafts.get(`${r.section}/${r.id}/note`) || "";
   let body = "";
   if (r.tab === "details")
-    body = panel("Record details", recordFacts(r.section, record));
+    body = r.section === "catalogue"
+      ? `<div class="stack">${panel(
+          "Review decision",
+          `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">Check the listing below, then publish it or send one clear correction request directly to ${esc(record.merchantName || "the merchant")}.</p><div class="action-stack catalogue-review-actions">${actions.map(([key, action]) => button(action.label, "command", key === "publish_product", `data-key="${key}"`)).join("")}</div>`,
+        )}${panel("Listing details", recordFacts(r.section, record))}${panel("Product photos", media(data.media))}${panel(
+          "Options and available stock",
+          simpleTable(
+            ["Option", "Item code", "Price", "Available", "Reserved"],
+            (data.variants || []).map((v) => [v.name, v.sku, money(v.priceMinor), v.available, v.reserved]),
+          ),
+        )}${panel("Submitted documents", (data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : '<p class="small muted">No extra documents were supplied with this listing.</p>')}${panel("Listing activity", timeline(data.activity))}</div>`
+      : panel("Record details", recordFacts(r.section, record));
   if (r.tab === "activity")
     body = panel("Activity history", timeline(data.activity));
   if (r.tab === "evidence")
@@ -409,7 +423,8 @@ function detail(data) {
     record.id !== state.viewer.id
   )
     extra.push(button("Edit roles", "edit-roles"));
-  return `<div class="row between record-back">${link(`Back to ${s.title.toLowerCase()}`, r.section, "", { q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }, "back-link")}${refreshTools()}</div><div class="detail-header"><span class="record-icon">${icon(s.icon)}</span><div><div class="eyebrow">${esc(record.reference || record.id)}</div><h1>${esc(title(record))}</h1></div>${badge(recordStatus(r.section, record))}</div><nav class="tabs" aria-label="Record views">${tabs.map(([key, label]) => `<a href="${esc(routeUrl(r.section, r.id, { tab: key, q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }))}" ${key === r.tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav><div class="detail-grid"><div>${body}</div><aside class="stack">${panel("Next steps", `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">${actions.length ? "Review the evidence before making a decision." : "No decisions are available for this record in its current state or for your role."}</p><div class="action-stack">${actions.map(([key, a]) => button(a.label, "command", false, `data-key="${key}"`)).join("")}${extra.join("")}</div>`)}${panel("Connected records", relatedLinks(record))}${panel(
+  const nextSteps = r.section === "catalogue" ? "" : panel("Next steps", `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">${actions.length ? "Review the evidence before making a decision." : "No decisions are available for this record in its current state or for your role."}</p><div class="action-stack">${actions.map(([key, a]) => button(a.label, "command", false, `data-key="${key}"`)).join("")}${extra.join("")}</div>`);
+  return `<div class="row between record-back">${link(`Back to ${s.title.toLowerCase()}`, r.section, "", { q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }, "back-link")}${refreshTools()}</div><div class="detail-header"><span class="record-icon">${icon(s.icon)}</span><div><div class="eyebrow">${esc(record.reference || record.id)}</div><h1>${esc(title(record))}</h1></div>${badge(recordStatus(r.section, record))}</div><nav class="tabs" aria-label="Record views">${tabs.map(([key, label]) => `<a href="${esc(routeUrl(r.section, r.id, { tab: key, q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }))}" ${key === r.tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav><div class="detail-grid"><div>${body}</div><aside class="stack">${nextSteps}${panel("Connected records", relatedLinks(record))}${panel(
     "Record context",
     facts([
       ["Record ID", record.id],
@@ -472,6 +487,9 @@ function commandDialog(key) {
     toast("This action is not available. Refresh the record.", true);
     return;
   }
+  const correctionGuidance = key === "reject_product"
+    ? `<div class="notice"><span>Give the merchant an actionable request: name the field, describe the issue, and say what an acceptable update looks like.</span></div><div class="field"><label for="note">What needs to change? This message goes directly to ${esc(record.merchantName || "the merchant")}.</label><textarea id="note" name="note" required minlength="10" maxlength="500" placeholder="Example: Replace the first photo with a square, well-lit image showing the full product. The current image is cropped and the item code does not match the colour listed."></textarea></div>`
+    : textarea("note", "Decision reason", "", 'required minlength="10" maxlength="500"');
   showDialog(
     a.label,
     `<form data-form="modal-command"><p class="small muted">${esc(title(record))} · ${esc(record.reference || record.id)}</p>${notice(a.impact)}${
@@ -488,7 +506,7 @@ function commandDialog(key) {
             "required",
           )
         : ""
-    }${textarea("note", "Decision reason", "", 'required minlength="10" maxlength="500"')}<label class="check"><input type="checkbox" name="confirmed" required> I reviewed the record and understand the effect of this action.</label>${formFoot(a.label)}</form>`,
+    }${correctionGuidance}<label class="check"><input type="checkbox" name="confirmed" required> I reviewed this listing and the message is clear for the merchant.</label>${formFoot(a.label)}</form>`,
     { kind: "command", key, record, section: state.route.section },
   );
 }
@@ -808,6 +826,7 @@ document.addEventListener("click", async (event) => {
           `<img class="image-preview" src="${esc(url)}" alt="${esc(target.dataset.label)}">`,
         );
     } else if (action === "connections") await checkConnections();
+    else if (action === "sign-out" && !state.viewer) await endSession();
     else if (action === "sign-out" || action === "sign-out-all")
       showDialog(
         "Sign out",
@@ -874,15 +893,7 @@ document.addEventListener("submit", async (event) => {
       return;
     }
     if (kind === "sign-out") {
-      const { error } = await state.auth.signOut({ scope: modalTask.scope });
-      if (error) throw error;
-      dialog.close();
-      state.controller?.abort();
-      state.viewer = null;
-      state.data = null;
-      state.drafts.clear();
-      pendingRequests.clear();
-      authPage();
+      await endSession(modalTask.scope);
       return;
     }
     if (!state.viewer) throw new Error("Sign in to continue.");
@@ -1078,6 +1089,7 @@ async function submitAuth(form, mode, values) {
   }
 }
 async function establishIdentity() {
+  const run = ++state.identityRun;
   state.viewer = null;
   app.innerHTML =
     '<main id="main" class="boot"><p role="status">Verifying your staff access…</p></main>';
@@ -1104,6 +1116,7 @@ async function establishIdentity() {
       await mfaDialog(true);
       return;
     }
+    if (run !== state.identityRun) return;
     if (state.lastViewerId && state.lastViewerId !== viewer.id)
       state.drafts.clear();
     state.lastViewerId = viewer.id;
@@ -1121,11 +1134,46 @@ async function establishIdentity() {
       history.replaceState(null, "", "#/overview");
     await loadRoute();
   } catch (error) {
+    if (run !== state.identityRun) return;
     if (error.status === 401) {
       authPage("sign-in", "Sign in again to continue.");
       return;
     }
     app.innerHTML = `<main id="main" class="boot"><div class="access-state"><div class="brand-mark">${icon("shield")}</div><h1>${error.status === 403 ? "Staff access required" : "Staff workspace unavailable"}</h1><p>${esc(errorMessage(error))}</p><p class="small muted">The workspace opens only after the Core API verifies your staff permissions.</p><div class="row">${button("Retry access check", "retry-identity", true)}${button("Sign out", "sign-out")}</div></div></main>`;
+  }
+}
+function clearStoredSession() {
+  for (const storage of [localStorage, sessionStorage]) {
+    try {
+      storage.removeItem("sfbf-admin-auth");
+    } catch {}
+  }
+}
+async function endSession(scope = "local") {
+  ++state.identityRun;
+  state.controller?.abort();
+  state.viewer = null;
+  state.data = null;
+  state.drafts.clear();
+  pendingRequests.clear();
+  state.notice = "";
+  if (dialog.open) dialog.close();
+  try {
+    const { error } = await state.auth?.signOut({ scope });
+    if (error && scope === "global")
+      toast(
+        "Signed out on this device. Other devices may need to sign out separately.",
+        true,
+      );
+  } catch {
+    if (scope === "global")
+      toast(
+        "Signed out on this device. Other devices may need to sign out separately.",
+        true,
+      );
+  } finally {
+    clearStoredSession();
+    authPage();
   }
 }
 async function mfaDialog(required = false) {
@@ -1298,6 +1346,7 @@ async function boot() {
       if (event === "SIGNED_OUT") {
         state.controller?.abort();
         ++state.generation;
+        ++state.identityRun;
         state.viewer = null;
         state.data = null;
         state.drafts.clear();
