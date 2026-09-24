@@ -332,73 +332,92 @@ function detail(data) {
   );
   const draft = state.drafts.get(`${r.section}/${r.id}/note`) || "";
   let body = "";
-  if (r.tab === "details")
-    body = r.section === "catalogue"
-      ? catalogueReview(data, actions)
-      : panel("Record details", recordFacts(r.section, record));
-  if (r.tab === "activity")
-    body = panel("Activity history", timeline(data.activity));
-  if (r.tab === "evidence")
-    body = `<div class="stack">${panel("Submitted images", media(data.media))}${panel("Documents", (data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : empty("No documents supplied", "Supporting documents will appear here after submission."))}</div>`;
-  if (r.tab === "notes")
-    body = panel(
+  if (r.section === "merchants") {
+    const detailsPanel = panel("Record details", recordFacts(r.section, record));
+    const evidencePanel = panel(
+      "Documents & media",
+      `<div class="stack">${panel("Submitted images", media(data.media))}${panel("Documents", (data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : empty("No documents supplied", "Supporting documents will appear here after submission."))}</div>`,
+    );
+    const activityPanel = panel("Activity history", timeline(data.activity));
+    const notesPanel = panel(
       "Internal notes",
       `<p class="small muted note-hint">Visible to authorized operators. Customer-facing replies belong in the support conversation.</p>${timeline(data.notes)}${recordPermission("add_note") ? `<form data-form="note">${textarea("note", "Add an internal note", draft, 'required minlength="3" maxlength="2000" data-draft="note"')}${errorSlot}<button class="btn primary" type="submit">Save note</button></form>` : ""}`,
     );
-  if (r.tab === "conversation")
-    body = panel(
-      "Customer conversation",
-      `${(data.messages || []).map((m) => `<article class="message ${m.senderRole === "agent" ? "agent" : ""}"><strong>${esc(m.senderName || human(m.senderRole))}</strong>${esc(m.body)}<small>${esc(date(m.createdAt))}</small></article>`).join("") || empty("No messages yet", "Messages from this support conversation will appear here.")}${recordPermission("reply_ticket") && ["open", "pending"].includes(record.status) ? `<form data-form="reply">${textarea("message", "Reply to customer", state.drafts.get(`support/${r.id}/reply`) || "", 'required maxlength="5000" data-draft="reply"')}<p class="small muted">Your reply will be sent to the customer and may trigger a notification.</p>${errorSlot}<button class="btn primary" type="submit">Send reply</button></form>` : '<p class="small muted">This conversation is read-only in its current state or for your role.</p>'}`,
-    );
-  if (r.tab === "variants")
-    body = panel(
-      "Variants & inventory",
-      simpleTable(
-        ["Variant", "SKU", "Price", "Available", "Reserved"],
-        (data.variants || []).map((v) => [
-          v.name,
-          v.sku,
-          money(v.priceMinor),
-          v.available,
-          v.reserved,
+    body = `<div class="stack merchant-unified-overview" id="merchant-unified-view">
+      <div id="details-section">${detailsPanel}</div>
+      <div id="evidence-section">${evidencePanel}</div>
+      <div id="activity-section">${activityPanel}</div>
+      <div id="notes-section">${notesPanel}</div>
+    </div>`;
+  } else {
+    if (r.tab === "details")
+      body = r.section === "catalogue"
+        ? catalogueReview(data, actions)
+        : panel("Record details", recordFacts(r.section, record));
+    if (r.tab === "activity")
+      body = panel("Activity history", timeline(data.activity));
+    if (r.tab === "evidence")
+      body = `<div class="stack">${panel("Submitted images", media(data.media))}${panel("Documents", (data.documents || []).length ? data.documents.map((d) => `<article class="document">${icon("file")}<div><strong>${esc(d.name)}</strong><small>${esc(d.type || "Submitted document")} · ${esc(date(d.createdAt))}</small></div>${button("Open", "document", false, `data-id="${esc(d.id)}"`)}</article>`).join("") : empty("No documents supplied", "Supporting documents will appear here after submission."))}</div>`;
+    if (r.tab === "notes")
+      body = panel(
+        "Internal notes",
+        `<p class="small muted note-hint">Visible to authorized operators. Customer-facing replies belong in the support conversation.</p>${timeline(data.notes)}${recordPermission("add_note") ? `<form data-form="note">${textarea("note", "Add an internal note", draft, 'required minlength="3" maxlength="2000" data-draft="note"')}${errorSlot}<button class="btn primary" type="submit">Save note</button></form>` : ""}`,
+      );
+    if (r.tab === "conversation")
+      body = panel(
+        "Customer conversation",
+        `${(data.messages || []).map((m) => `<article class="message ${m.senderRole === "agent" ? "agent" : ""}"><strong>${esc(m.senderName || human(m.senderRole))}</strong>${esc(m.body)}<small>${esc(date(m.createdAt))}</small></article>`).join("") || empty("No messages yet", "Messages from this support conversation will appear here.")}${recordPermission("reply_ticket") && ["open", "pending"].includes(record.status) ? `<form data-form="reply">${textarea("message", "Reply to customer", state.drafts.get(`support/${r.id}/reply`) || "", 'required maxlength="5000" data-draft="reply"')}<p class="small muted">Your reply will be sent to the customer and may trigger a notification.</p>${errorSlot}<button class="btn primary" type="submit">Send reply</button></form>` : '<p class="small muted">This conversation is read-only in its current state or for your role.</p>'}`,
+      );
+    if (r.tab === "variants")
+      body = panel(
+        "Variants & inventory",
+        simpleTable(
+          ["Variant", "SKU", "Price", "Available", "Reserved"],
+          (data.variants || []).map((v) => [
+            v.name,
+            v.sku,
+            money(v.priceMinor),
+            v.available,
+            v.reserved,
+          ]),
+        ),
+      );
+    if (r.tab === "fulfilment")
+      body = `<div class="stack">${panel(
+        "Order items",
+        simpleTable(
+          ["Product", "Variant", "Quantity", "Line total"],
+          (data.items || []).map((i) => [
+            i.name,
+            i.variantName,
+            i.quantity,
+            money(i.totalMinor),
+          ]),
+        ),
+      )}${panel(
+        "Shipment",
+        facts([
+          ["Carrier", record.carrier],
+          ["Tracking number", record.trackingNumber],
+          ["Delivery status", human(record.shipmentStatus)],
+          ["Verified delivery", date(record.deliveredAt)],
         ]),
-      ),
-    );
-  if (r.tab === "fulfilment")
-    body = `<div class="stack">${panel(
-      "Order items",
-      simpleTable(
-        ["Product", "Variant", "Quantity", "Line total"],
-        (data.items || []).map((i) => [
-          i.name,
-          i.variantName,
-          i.quantity,
-          money(i.totalMinor),
-        ]),
-      ),
-    )}${panel(
-      "Shipment",
-      facts([
-        ["Carrier", record.carrier],
-        ["Tracking number", record.trackingNumber],
-        ["Delivery status", human(record.shipmentStatus)],
-        ["Verified delivery", date(record.deliveredAt)],
-      ]),
-    )}${panel("Tracking events", timeline(data.tracking))}</div>`;
-  if (r.tab === "ledger")
-    body = panel(
-      "Ledger entries",
-      simpleTable(
-        ["Reference", "Account", "Direction", "Amount", "Recorded"],
-        (data.entries || []).map((e) => [
-          e.reference,
-          e.accountName,
-          human(e.direction),
-          money(e.amountMinor),
-          date(e.createdAt),
-        ]),
-      ),
-    );
+      )}${panel("Tracking events", timeline(data.tracking))}</div>`;
+    if (r.tab === "ledger")
+      body = panel(
+        "Ledger entries",
+        simpleTable(
+          ["Reference", "Account", "Direction", "Amount", "Recorded"],
+          (data.entries || []).map((e) => [
+            e.reference,
+            e.accountName,
+            human(e.direction),
+            money(e.amountMinor),
+            date(e.createdAt),
+          ]),
+        ),
+      );
+  }
   const extra = [];
   if (recordPermission("assign"))
     extra.push(button("Assign operator", "assign"));
@@ -414,7 +433,7 @@ function detail(data) {
     record.id !== state.viewer.id
   )
     extra.push(button("Edit roles", "edit-roles"));
-  const nextSteps = r.section === "catalogue" ? "" : panel("Next steps", `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">${actions.length ? "Review the evidence before making a decision." : "No decisions are available for this record in its current state or for your role."}</p><div class="action-stack">${actions.map(([key, a]) => button(a.label, "command", false, `data-key="${key}"`)).join("")}${extra.join("")}</div>`);
+  const nextSteps = r.section === "catalogue" ? "" : panel("Next steps", `${record.actionBlockReason ? notice(record.actionBlockReason) : ""}<p class="small muted">${actions.length ? "Review the evidence before making a decision." : "No decisions are available for this record in its current state or for your role."}</p><div class="action-stack">${actions.map(([key, a]) => button(a.label, "command", key === "approve_merchant", `data-key="${key}"`)).join("")}${extra.join("")}</div>`);
   return `<div class="row between record-back">${link(`Back to ${s.title.toLowerCase()}`, r.section, "", { q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }, "back-link")}${refreshTools()}</div><div class="detail-header"><span class="record-icon">${icon(s.icon)}</span><div><div class="eyebrow">${esc(record.reference || record.id)}</div><h1>${esc(title(record))}</h1></div>${badge(recordStatus(r.section, record))}</div><nav class="tabs" aria-label="Record views">${tabs.map(([key, label]) => `<a href="${esc(routeUrl(r.section, r.id, { tab: key, q: r.q, status: r.status, sort: r.sort, cursor: r.cursor }))}" ${key === r.tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav><div class="detail-grid ${r.section === "catalogue" ? "catalogue-detail-grid" : ""}"><div>${body}</div><aside class="stack">${nextSteps}${panel("Connected records", relatedLinks(record))}${panel(
     "Record context",
     facts([
@@ -650,9 +669,11 @@ function commandDialog(key) {
     toast("This action is not available. Refresh the record.", true);
     return;
   }
+  const isVerify = key === "approve_merchant";
+  const defaultNote = isVerify ? "Merchant business registration and identity verified." : "";
   const correctionGuidance = key === "reject_product"
     ? `<div class="notice"><span>Give the merchant an actionable request: name the field, describe the issue, and say what an acceptable update looks like.</span></div><div class="field"><label for="note">What needs to change? This message goes directly to ${esc(record.merchantName || "the merchant")}.</label><textarea id="note" name="note" required minlength="10" maxlength="500" placeholder="Example: Replace the first photo with a square, well-lit image showing the full product. The current image is cropped and the item code does not match the colour listed."></textarea></div>`
-    : textarea("note", "Decision reason", "", 'required minlength="10" maxlength="500"');
+    : textarea("note", "Decision reason", defaultNote, 'required minlength="10" maxlength="500"');
   showDialog(
     a.label,
     `<form data-form="modal-command"><p class="small muted">${esc(title(record))} · ${esc(record.reference || record.id)}</p>${notice(a.impact)}${
@@ -669,7 +690,7 @@ function commandDialog(key) {
             "required",
           )
         : ""
-    }${correctionGuidance}<label class="check"><input type="checkbox" name="confirmed" required> I reviewed this listing and the message is clear for the merchant.</label>${formFoot(a.label)}</form>`,
+    }${correctionGuidance}<label class="check"><input type="checkbox" name="confirmed" required checked> ${isVerify ? "Confirm immediate verification and merchant activation." : "I reviewed this record and confirm this decision."}</label>${formFoot(a.label)}</form>`,
     { kind: "command", key, record, section: state.route.section },
   );
 }
@@ -1277,13 +1298,6 @@ async function establishIdentity() {
   app.innerHTML =
     '<main id="main" class="boot"><p role="status">Verifying your staff access…</p></main>';
   try {
-    const { data: assurance, error: assuranceError } =
-      await state.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assuranceError) throw assuranceError;
-    if (assurance.nextLevel === "aal2" && assurance.currentLevel !== "aal2") {
-      await mfaDialog(true);
-      return;
-    }
     const viewer = await state.api.request("/v1/admin/me");
     if (
       !viewer?.id ||
@@ -1295,9 +1309,14 @@ async function establishIdentity() {
         "FORBIDDEN",
         403,
       );
-    if (viewer.requireMfa && assurance.currentLevel !== "aal2") {
-      await mfaDialog(true);
-      return;
+    if (viewer.requireMfa) {
+      const { data: assurance, error: assuranceError } =
+        await state.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError) throw assuranceError;
+      if (assurance.currentLevel !== "aal2") {
+        await mfaDialog(true);
+        return;
+      }
     }
     if (run !== state.identityRun) return;
     if (state.lastViewerId && state.lastViewerId !== viewer.id)
